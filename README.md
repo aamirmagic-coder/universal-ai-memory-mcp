@@ -7,7 +7,7 @@ Owner-controlled shared memory for multiple AI assistants and projects. Supabase
 - Supabase schema and two Edge Functions are deployed; database smoke tests passed.
 - The MCP server exposes search, save, list, stats and soft-archive tools over Streamable HTTP.
 - The compatibility sync endpoint supports single and batched upsert/archive operations.
-- A reviewed, one-way PMB export adapter is included. It does not modify PMB local data and requires an explicit apply flag.
+- A reviewed, one-way PMB export adapter is included. It does not modify PMB local data and requires an explicit apply flag. It is not yet connected to a live local PMB instance.
 - The current cloud search implementation is PostgreSQL full-text/keyword search. pgvector is enabled, but embeddings and semantic search are not yet wired in.
 - ChatGPT custom MCP availability depends on the account plan and client surface.
 
