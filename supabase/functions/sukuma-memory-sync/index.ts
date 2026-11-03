@@ -22,7 +22,7 @@ Deno.serve(async(req:Request)=>{
  if(!token||token.length>256) return out({error:"Unauthorized"},401);
  let body:any; try{body=await req.json()}catch{return out({error:"Invalid JSON"},400)}
  const op=body?.operation;
- if(op!=="upsert"&&op!=="delete") return out({error:"Unsupported operation"},400);
+ if(op!=="upsert"&&op!=="delete"&&op!=="upsert_batch") return out({error:"Unsupported operation"},400);
  try {
   const rows=await rpc("resolve_memory_client",{p_token_hash:await hash(token)});
   const client=Array.isArray(rows)?rows[0]:null;
@@ -31,6 +31,35 @@ Deno.serve(async(req:Request)=>{
   if(!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(workspace)) return out({error:"Invalid workspace"},400);
   const allowed=Array.isArray(client.allowed_workspaces)?client.allowed_workspaces:[];
   if(!allowed.includes("*")&&!allowed.includes(workspace)) return out({error:"Workspace not authorised"},403);
+  if(op==="upsert_batch") {
+   if(!client.permissions?.includes("memory_save")) return out({error:"Operation not authorised"},403);
+   const records=body.records;
+   if(!Array.isArray(records)||records.length<1||records.length>50) return out({error:"records must contain 1-50 items"},400);
+   for(const item of records) {
+    if(!item||typeof item.external_id!=="string"||item.external_id.length<1||item.external_id.length>200||
+       typeof item.content!=="string"||item.content.length<1||item.content.length>20000||
+       !["fact","decision","lesson","event","goal","note","project","preference"].includes(item.memory_type||"note")) {
+      return out({error:"Batch contains an invalid record"},400);
+    }
+    if(item.metadata&&JSON.stringify(item.metadata).length>8192) return out({error:"Record metadata too large"},400);
+   }
+   const results=[];
+   for(const item of records) {
+    const result=await rpc("sync_memory_record",{
+     p_owner_id:client.owner_id,p_external_id:item.external_id,p_workspace_id:workspace,
+     p_memory_type:item.memory_type||"note",p_content:item.content,
+     p_tags:Array.isArray(item.tags)?item.tags.slice(0,50).filter((x:unknown)=>typeof x==="string").map((x:string)=>x.slice(0,80)):[],
+     p_metadata:item.metadata&&typeof item.metadata==="object"&&!Array.isArray(item.metadata)?item.metadata:{},
+     p_importance:Number.isFinite(item.importance)?item.importance:0.5,
+     p_confidence:Number.isFinite(item.confidence)?item.confidence:1,
+     p_is_pinned:item.is_pinned===true,
+     p_source_created_at:typeof item.source_created_at==="string"?item.source_created_at:null
+    });
+    await rpc("record_memory_access",{p_client_id:client.id,p_owner_id:client.owner_id,p_action:"sync_upsert",p_workspace_id:workspace,p_external_id:item.external_id,p_metadata:{transport:"pmb-batch-sync"}});
+    results.push({external_id:item.external_id,ok:true,id:result?.id||null});
+   }
+   return out({ok:true,operation:op,processed:results.length,results});
+  }
   let result;
   if(op==="upsert") {
    if(!client.permissions?.includes("memory_save")) return out({error:"Operation not authorised"},403);
