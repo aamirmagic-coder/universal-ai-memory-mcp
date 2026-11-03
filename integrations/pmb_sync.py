@@ -41,15 +41,19 @@ def map_event(event: dict[str, Any], workspace_id: str, workspace_name: str, tar
     """Map one PMB event to a cloud record; return None for pin markers/junk."""
     ulid, content = event.get("ulid"), event.get("content")
     event_type = str(event.get("type") or "note").lower()
-    if event_type == "pin" or not isinstance(ulid, str) or not ulid:
+    if not isinstance(ulid, str) or not ulid:
         return None
     if not isinstance(content, str) or not content.strip():
         return None
+    raw_meta = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
+    if event_type == "qa":
+        question = raw_meta.get("query")
+        if isinstance(question, str) and question.strip():
+            content = f"Q: {question.strip()}\nA: {content}"
     if len(content) > 20_000:
         raise ValueError(f"PMB event {ulid} exceeds the 20,000-character cloud limit")
-    raw_meta = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
     kind = str(raw_meta.get("kind") or "").lower()
-    memory_type = "lesson" if kind in {"lesson", "failure"} else (kind if kind in ALLOWED_TYPES else TYPE_MAP.get(event_type, "note"))
+    memory_type = "note" if event_type == "pin" else ("lesson" if kind in {"lesson", "failure"} else (kind if kind in ALLOWED_TYPES else TYPE_MAP.get(event_type, "note")))
     tags = raw_meta.get("tags") if isinstance(raw_meta.get("tags"), list) else []
     safe_metadata: dict[str, Any] = {
         "source": "pmb-ai", "pmb_event_type": event_type,
@@ -68,7 +72,7 @@ def map_event(event: dict[str, Any], workspace_id: str, workspace_name: str, tar
         "memory_type": memory_type, "content": content,
         "tags": [str(tag)[:80] for tag in tags[:50]], "metadata": safe_metadata,
         "importance": max(0.0, min(1.0, float(importance if importance is not None else 0.5))),
-        "confidence": 1.0, "is_pinned": bool(raw_meta.get("pinned", False)),
+        "confidence": 1.0, "is_pinned": event_type == "pin" or bool(raw_meta.get("pinned", False)),
         "source_created_at": source_created_at,
     }
 
