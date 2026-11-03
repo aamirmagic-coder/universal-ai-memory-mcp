@@ -4,6 +4,20 @@ async function hash(value:string) {
  const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));
  return Array.from(new Uint8Array(d),b=>b.toString(16).padStart(2,"0")).join("");
 }
+async function readJsonLimited(req:Request,maxBytes=65536):Promise<any> {
+ const reader=req.body?.getReader();
+ if(!reader) throw new Error("Invalid JSON");
+ const chunks:Uint8Array[]=[]; let total=0;
+ while(true) {
+  const {done,value}=await reader.read(); if(done) break;
+  total+=value.byteLength;
+  if(total>maxBytes) { await reader.cancel(); throw new RangeError("Request too large"); }
+  chunks.push(value);
+ }
+ const bytes=new Uint8Array(total); let offset=0;
+ for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+ return JSON.parse(new TextDecoder().decode(bytes));
+}
 function out(data:unknown,status=200) {
  return new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}});
 }
@@ -17,10 +31,11 @@ async function rpc(name:string,payload:Record<string,unknown>) {
 }
 Deno.serve(async(req:Request)=>{
  if(req.method!=="POST") return out({error:"Method not allowed"},405);
- if(Number(req.headers.get("content-length")||"0")>65536) return out({error:"Request too large"},413);
  const bearer=req.headers.get("authorization")||"", token=bearer.startsWith("Bearer ")?bearer.slice(7):"";
  if(!token||token.length>256) return out({error:"Unauthorized"},401);
- let body:any; try{body=await req.json()}catch{return out({error:"Invalid JSON"},400)}
+ let body:any;
+ try{body=await readJsonLimited(req,65536)}
+ catch(error){if(error instanceof RangeError)return out({error:"Request too large"},413);return out({error:"Invalid JSON"},400)}
  const op=body?.operation;
  if(op!=="upsert"&&op!=="delete"&&op!=="upsert_batch") return out({error:"Unsupported operation"},400);
  try {
@@ -63,7 +78,7 @@ Deno.serve(async(req:Request)=>{
   let result;
   if(op==="upsert") {
    if(!client.permissions?.includes("memory_save")) return out({error:"Operation not authorised"},403);
-   if(typeof body.external_id!=="string"||typeof body.content!=="string"||body.content.length<1||body.content.length>20000) return out({error:"Invalid memory content or ID"},400);
+   if(typeof body.external_id!=="string"||body.external_id.length<1||body.external_id.length>200||typeof body.content!=="string"||body.content.length<1||body.content.length>20000) return out({error:"Invalid memory content or ID"},400);
    const kind=["fact","decision","lesson","event","goal","note","project","preference"].includes(body.memory_type)?body.memory_type:"note";
    result=await rpc("sync_memory_record",{
     p_owner_id:client.owner_id,p_external_id:body.external_id,p_workspace_id:workspace,p_memory_type:kind,p_content:body.content,
