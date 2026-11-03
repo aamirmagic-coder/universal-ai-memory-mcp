@@ -6,7 +6,7 @@ Owner-controlled shared memory for multiple AI assistants and projects. Supabase
 
 - Supabase schema and two Edge Functions are deployed; database smoke tests passed.
 - The MCP server exposes search, save, list, stats and soft-archive tools over Streamable HTTP.
-- The Sukuma compatibility endpoint supports single and batched upsert/archive operations.
+- The compatibility sync endpoint supports single and batched upsert/archive operations.
 - A reviewed, one-way PMB export adapter is included. It does not modify PMB local data and requires an explicit apply flag.
 - The current cloud search implementation is PostgreSQL full-text/keyword search. pgvector is enabled, but embeddings and semantic search are not yet wired in.
 - ChatGPT custom MCP availability depends on the account plan and client surface.
@@ -18,8 +18,8 @@ Owner-controlled shared memory for multiple AI assistants and projects. Supabase
 - `private.memory_clients`: SHA-256 token hashes, permissions and workspace allowlists.
 - `private.memory_access_audit`: client/action/workspace access log.
 - `universal-memory`: MCP Streamable HTTP endpoint.
-- `sukuma-memory-sync`: compatibility REST endpoint for Sukuma and PMB batch sync.
-- Workspaces isolate `personal`, `sukuma`, `amplify`, `nexo`, `ward52`, and other project contexts.
+- `sukuma-memory-sync`: compatibility REST endpoint for the Sukuma workspace and PMB batch sync.
+- Workspaces isolate personal data, project contexts and future workspaces.
 
 ## Deploy to Supabase
 
