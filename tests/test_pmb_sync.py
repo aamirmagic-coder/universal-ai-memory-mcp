@@ -41,7 +41,7 @@ def test_map_event_preserves_pin_events_as_pinned_notes():
 def test_map_event_preserves_question_context_for_qa_events():
     event = sample_event(type="qa", metadata={"query": "Why use Postgres?", "tags": ["architecture"]})
     record = map_event(event, "ws", "Main", "pmb-ws")
-    assert record["content"] == "Q: Why use Postgres?\\nA: Project uses PostgreSQL 17."
+    assert record["content"] == "Q: Why use Postgres?\nA: Project uses PostgreSQL 17."
 
 
 def test_load_export_validates_shape(tmp_path: Path):
