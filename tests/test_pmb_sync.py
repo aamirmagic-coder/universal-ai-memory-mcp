@@ -31,8 +31,17 @@ def test_map_event_does_not_copy_unapproved_metadata_fields():
     assert "file" not in record["metadata"]
 
 
-def test_map_event_skips_pin_marker_events():
-    assert map_event(sample_event(type="pin"), "ws", "Main", "pmb-ws") is None
+def test_map_event_preserves_pin_events_as_pinned_notes():
+    record = map_event(sample_event(type="pin"), "ws", "Main", "pmb-ws")
+    assert record is not None
+    assert record["memory_type"] == "note"
+    assert record["is_pinned"] is True
+
+
+def test_map_event_preserves_question_context_for_qa_events():
+    event = sample_event(type="qa", metadata={"query": "Why use Postgres?", "tags": ["architecture"]})
+    record = map_event(event, "ws", "Main", "pmb-ws")
+    assert record["content"] == "Q: Why use Postgres?\\nA: Project uses PostgreSQL 17."
 
 
 def test_load_export_validates_shape(tmp_path: Path):
