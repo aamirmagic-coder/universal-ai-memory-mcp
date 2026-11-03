@@ -33,6 +33,26 @@ function json(data: unknown, status=200, origin?: string) {
   }
   return new Response(JSON.stringify(data), {status,headers});
 }
+async function readJsonLimited(req:Request,maxBytes=65536):Promise<any> {
+  if(!req.body) throw new Error("Invalid JSON");
+  const reader=req.body.getReader();
+  const chunks:Uint8Array[]=[];
+  let total=0;
+  while(true) {
+    const {done,value}=await reader.read();
+    if(done) break;
+    total+=value.byteLength;
+    if(total>maxBytes) {
+      await reader.cancel();
+      throw new RangeError("Request too large");
+    }
+    chunks.push(value);
+  }
+  const bytes=new Uint8Array(total);
+  let offset=0;
+  for(const chunk of chunks) { bytes.set(chunk,offset); offset+=chunk.byteLength; }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
 function rpcResponse(id: unknown,result: unknown) { return {jsonrpc:"2.0",id,result}; }
 function rpcError(id: unknown,code:number,message:string) { return {jsonrpc:"2.0",id,error:{code,message}}; }
 function toolResult(value:unknown,isError=false) {
@@ -87,9 +107,12 @@ Deno.serve(async(req:Request)=>{
   catch { return json({error:"Memory authentication unavailable"},503,origin); }
   const client=Array.isArray(clientRows)?clientRows[0]:null;
   if(!client) return json({error:"Unauthorized"},401,origin);
-  if(Number(req.headers.get("content-length")||"0")>65536) return json({error:"Request too large"},413,origin);
   let body:any;
-  try { body=await req.json(); } catch { return json({error:"Invalid JSON"},400,origin); }
+  try { body=await readJsonLimited(req,65536); }
+  catch(error) {
+    if(error instanceof RangeError) return json({error:"Request too large"},413,origin);
+    return json({error:"Invalid JSON"},400,origin);
+  }
   const id=body?.id;
   const method=body?.method;
   if(body?.jsonrpc!=="2.0" || typeof method!=="string") return json(rpcError(id,-32600,"Invalid JSON-RPC request"),400,origin);
@@ -123,7 +146,7 @@ Deno.serve(async(req:Request)=>{
       if(typeof args.query!=="string"||args.query.length>500) return json(rpcResponse(id,toolResult("query must be a string of at most 500 characters",true)),200,origin);
       result=await callDb("search_memory_records",{p_owner_id:client.owner_id,p_workspace_id:workspace,p_query:args.query,p_limit:Number.isInteger(args.limit)?args.limit:10});
     } else if(name==="memory_save") {
-      if(typeof args.external_id!=="string"||args.external_id.length>200||typeof args.content!=="string"||typeof args.memory_type!=="string") return json(rpcResponse(id,toolResult("external_id, memory_type and content are required",true)),200,origin);
+      if(typeof args.external_id!=="string"||args.external_id.length<1||args.external_id.length>200||typeof args.content!=="string"||typeof args.memory_type!=="string") return json(rpcResponse(id,toolResult("external_id, memory_type and content are required",true)),200,origin);
       externalId=args.external_id;
       const metadata=args.metadata&&typeof args.metadata==="object"&&!Array.isArray(args.metadata)?args.metadata:{};
       if(JSON.stringify(metadata).length>8192) return json(rpcResponse(id,toolResult("metadata is too large",true)),200,origin);
